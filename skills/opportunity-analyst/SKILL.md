@@ -36,16 +36,35 @@ Before extracting, you MUST have access to:
 
 1. Confirm (or ask for) the product metric
 2. **Locate and load the phase map.** Use Glob to find `phase-map-*.md` inside the TEMP folder. Read the artifact. Extract phase names verbatim from the `## Phases` section (numbered list with bold names). If no artifact exists, ask the user whether to run `/phase-map-analyst` first (recommended) or proceed without (with a warning - downstream clustering will be weaker).
-3. Use Glob to find all transcript files in the provided folder (skip `screening-overview.md`, any `phase-map-*.md`, and any other non-transcript files)
-4. **Fan out in parallel.** Spawn one `general-purpose` subagent per transcript using the Agent tool, all in a single message so they run concurrently. Each subagent owns its file end-to-end (Read → extract → Edit) and returns a one-line confirmation. See "Parallel Fan-Out" below for the exact prompt template and batching rule.
+3. **Detect transcript state.** Use Glob to find all transcript files in the provided folder (skip `screening-overview.md`, any `phase-map-*.md`, and any other non-transcript files). For each transcript, read it and classify into one of three buckets:
+   - **New** - no `## Opportunity Analyst Skill detected Opportunities and Insights` section.
+   - **Up-to-date** - section exists, and the `Phase map used:` metadata path matches the phase map loaded in step 2.
+   - **Stale** - section exists, but the `Phase map used:` path differs from the current phase map (or is missing/malformed).
+
+   Surface the breakdown to the user:
+
+   ```
+   Found {total} transcripts in {folder}:
+   - {new_count} new → will process
+   - {uptodate_count} up-to-date (tagged against current phase map) → skipping
+   - {stale_count} stale (tagged against an older phase map) → will reprocess (replaces existing section)
+   ```
+
+   If `new_count + stale_count == 0`, report "No transcripts need processing - all up-to-date." and exit cleanly without spawning subagents.
+
+   Otherwise, proceed to step 4. Only the **new** and **stale** transcripts get processed; up-to-date ones are skipped entirely.
+
+4. **Fan out in parallel.** Spawn one `general-purpose` subagent per **new or stale** transcript using the Agent tool, all in a single message so they run concurrently. Each subagent owns its file end-to-end (Read → extract → Edit) and returns a one-line confirmation. See "Parallel Fan-Out" below for the exact prompt template and batching rule.
 5. After all subagents complete, sum the per-subagent counts (each subagent's done line reports `N opportunities, M misfits, K insights`) and emit the aggregate report below. Do NOT write a cross-transcript narrative summary or cluster opportunities - those remain the sizer's job. The aggregate is workflow signal only (misfit-rate sanity check + a reminder to consider revising the phase map before sizing).
 
    **Final report format:**
 
    ```
-   Opportunity-analyst run complete on {N} transcripts.
+   Opportunity-analyst run complete.
+   - Processed: {new_count + stale_count} transcripts ({new_count} new, {stale_count} stale → reprocessed)
+   - Skipped: {uptodate_count} transcripts (already up-to-date)
 
-   Aggregate counts:
+   Aggregate counts (across processed transcripts):
    - {X} opportunities (tagged to a phase)
    - {Y} misfits (metric-moving opportunities that didn't fit any phase) - {Y/(X+Y)*100:.0f}% misfit rate
    - {Z} insights
