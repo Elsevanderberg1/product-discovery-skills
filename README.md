@@ -10,7 +10,7 @@ Given a folder of interview transcripts from ICP-matching interviewees, the skil
 2. Extracts candidate opportunities (pain points, friction, wishes, desires) framed from the customer's perspective
 3. Filters out pain points the interviewee has already solved
 4. Flags opportunities that don't plausibly drive the primary product metric as non-priority
-5. Scores each opportunity on **importance** (1-4) and **prevalence** (fraction of interviewees)
+5. Scores each opportunity on **importance** (1-5) and **prevalence** (fraction of interviewees)
 6. Writes a ranked markdown report alongside the transcripts
 
 ## Prerequisites
@@ -46,7 +46,7 @@ The ranked report is written to the same folder as the transcripts.
 
 `Score = (importance x 2) + (prevalence x 1)`
 
-- **Importance** (1-4): how big, recurring, or urgent the problem is for customers who experience it
+- **Importance** (1-5): how big, recurring, or urgent the problem is for customers who experience it
 - **Prevalence** (0-1): fraction of ICP interviewees who mention the opportunity or a closely related one
 
 Opportunities are ranked by combined score, highest first.
