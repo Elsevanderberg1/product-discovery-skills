@@ -19,7 +19,6 @@ flowchart LR
   B --> C[opportunity-analyst]
   C --> D[opportunity-clusterer]
   D --> E[opportunity-sizer]
-  D -. optional tree .-> M[opportunity-mapper]
   C -. misfits .-> B
   R[opportunity-analyst-reset] -. cleanup before re-run .-> C
 ```
@@ -34,9 +33,6 @@ flowchart LR
 | 4   | [`opportunity-analyst-reset`](skills/opportunity-analyst-reset/) | Strip prior analyst output so the pipeline can re-run cleanly | shipped        |
 | 5   | [`opportunity-clusterer`](skills/opportunity-clusterer/)         | Cluster opportunities across transcripts; hard-partition by phase; verbatim labels | shipped        |
 | 6   | [`opportunity-sizer`](skills/opportunity-sizer/)                 | Score and prioritize clusters on importance × prevalence; surface the top focus    | shipped        |
-| 7   | [`opportunity-mapper`](skills/opportunity-mapper/)               | Optional: assemble clusters into a multi-level OST tree                            | deferred       |
-
-The default pipeline is `clusterer → sizer`. `opportunity-mapper` is kept as an optional follow-on for users who want a full tree, but tree-building proved error-prone in practice, so the sizer reads the clusterer's flat output directly.
 
 ## Install
 

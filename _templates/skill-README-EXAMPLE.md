@@ -47,7 +47,7 @@ The folder is typically the `icp-screened-TEMP-YYYY-MM-DD/` produced by `icp-scr
 
 - **Consumes:** the TEMP folder produced by `icp-screener` plus the `phase-map-*.md` produced by `phase-map-analyst`.
 - **Produces:** in-place updates to each transcript file (appended detected-items section).
-- **Sibling skills:** `opportunity-analyst-reset` (strip prior output for a clean re-run), `phase-map-analyst` (upstream — defines the phase vocabulary), `opportunity-mapper` (downstream — clusters extracted opportunities across transcripts).
+- **Sibling skills:** `opportunity-analyst-reset` (strip prior output for a clean re-run), `phase-map-analyst` (upstream — defines the phase vocabulary), `opportunity-clusterer` (downstream — clusters extracted opportunities across transcripts).
 
 ## Example
 
@@ -86,7 +86,7 @@ Aggregate counts:
 
 ## Design notes
 
-- **One transcript at a time.** The skill fans out one subagent per transcript, all in parallel. No cross-transcript work happens at this stage — that's deferred to `opportunity-mapper`.
+- **One transcript at a time.** The skill fans out one subagent per transcript, all in parallel. No cross-transcript work happens at this stage — that's deferred to `opportunity-clusterer`.
 - **Phase names verbatim.** Subagents are forbidden from paraphrasing or inventing phases; if no phase fits, the opportunity goes in the "Doesn't fit any phase" bucket.
 - **Misfits are evidence, not noise.** A high misfit rate is the trigger to re-run `phase-map-analyst` (which detects existing analyst output and offers to revise the map based on misfit clusters).
 - **Filter 2 is the goal-alignment gate.** Each opportunity is asked: "would resolving this plausibly move the primary product metric?" Opportunities that don't pass are still captured, but in the "Non-priority" bucket — useful context for the team without polluting the prioritization.

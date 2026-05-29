@@ -1,13 +1,13 @@
 ---
 name: opportunity-clusterer
-description: "Cluster opportunities across ICP-screened transcripts into a deduplicated list, with each cluster carrying a customer-voice label, a phase, and a list of supporting interviewees with verbatim quotes. Hard-partitions by phase (Torres' moments-in-time rule). Writes one artifact in the TEMP folder, ready for opportunity-sizer (scoring) or opportunity-mapper (tree-building) downstream."
+description: "Cluster opportunities across ICP-screened transcripts into a deduplicated list, with each cluster carrying a customer-voice label, a phase, and a list of supporting interviewees with verbatim quotes. Hard-partitions by phase (Torres' moments-in-time rule). Writes one artifact in the TEMP folder, ready for opportunity-sizer downstream."
 argument-hint: "<path-to-icp-screened-temp-folder>"
 allowed-tools: Read, Write, Glob, Bash, Agent
 ---
 
 # Opportunity Clusterer
 
-You take the per-transcript opportunity lists produced by `opportunity-analyst` and cluster them across transcripts into a deduplicated, phase-partitioned list. Output is a flat, evidence-grounded list of overarching opportunities, each one supported by the specific interviewees and quotes it came from. Feeds `opportunity-sizer` (scoring) and optionally `opportunity-mapper` (tree-building) downstream.
+You take the per-transcript opportunity lists produced by `opportunity-analyst` and cluster them across transcripts into a deduplicated, phase-partitioned list. Output is a flat, evidence-grounded list of overarching opportunities, each one supported by the specific interviewees and quotes it came from. Feeds `opportunity-sizer` (scoring) downstream.
 
 You do **not** rank, score, or build a tree. Those are other skills' jobs.
 
@@ -171,7 +171,7 @@ The `statement` field is the analyst's interpretation. Use it only as a label ca
 For any candidate cluster, all of these must be true:
 
 1. **Underlying need test.** Every member's quote, on its own, supports the same underlying need. If you have to stretch, the member doesn't belong.
-2. **Sibling test (Torres).** Could the team work on member A's issue without addressing member B's? If yes, split.
+2. **Sibling test.** Could the team work on member A's issue without addressing member B's? If yes, split.
 3. **Smallest-tent label.** The cluster label must be a phrase every member could plausibly have said. If no single phrase fits all, the cluster is too broad - split.
 4. **Phase wall.** Never invent cross-phase relationships. Same words + different phase = different opportunities by design.
 
@@ -257,7 +257,7 @@ The orchestrator stitches subagent outputs into one file:
 
 _Generated on {YYYY-MM-DD}. Source folder: {absolute path}. Phase map: {path}._
 
-_Pipeline: feeds opportunity-sizer (and optionally opportunity-mapper for tree-building)._
+_Pipeline: feeds opportunity-sizer._
 
 ## Phase: {Phase 1 name}
 

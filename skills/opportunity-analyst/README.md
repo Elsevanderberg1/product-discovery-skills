@@ -86,7 +86,7 @@ Aggregate counts:
 
 ## Design notes
 
-- **One transcript at a time.** The skill fans out one subagent per transcript, all in parallel. No cross-transcript work happens at this stage — that's deferred to `opportunity-sizer` (and later, `opportunity-mapper`).
+- **One transcript at a time.** The skill fans out one subagent per transcript, all in parallel. No cross-transcript work happens at this stage — that's deferred to `opportunity-clusterer` and `opportunity-sizer`.
 - **Phase names verbatim.** Subagents are forbidden from paraphrasing or inventing phases; if no phase fits, the opportunity goes in the "Doesn't fit any phase" bucket.
 - **Misfits are evidence, not noise.** A high misfit rate is the trigger to re-run `phase-map-analyst` (which detects existing analyst output and offers to revise the map based on misfit clusters).
 - **Filter 2 is the goal-alignment gate.** Each opportunity is asked: "would resolving this plausibly move the primary product metric?" Opportunities that don't pass are still captured, but in the "Non-priority" bucket — useful context for the team without polluting the prioritization.
