@@ -7,7 +7,7 @@ The skills work together as a pipeline, but each is independently invocable — 
 ## Pipeline
 
 ```
-icp-screener → phase-map-analyst → opportunity-analyst → opportunity-mapper → opportunity-sizer
+icp-screener → phase-map-analyst → opportunity-analyst → opportunity-clusterer → opportunity-sizer
                        ↑                    │
                        └───── feedback ─────┘
                        (via opportunity-analyst-reset)
@@ -17,8 +17,9 @@ icp-screener → phase-map-analyst → opportunity-analyst → opportunity-mappe
 flowchart LR
   A[icp-screener] --> B[phase-map-analyst]
   B --> C[opportunity-analyst]
-  C --> D[opportunity-mapper]
+  C --> D[opportunity-clusterer]
   D --> E[opportunity-sizer]
+  D -. optional tree .-> M[opportunity-mapper]
   C -. misfits .-> B
   R[opportunity-analyst-reset] -. cleanup before re-run .-> C
 ```
@@ -31,10 +32,11 @@ flowchart LR
 | 2   | [`phase-map-analyst`](skills/phase-map-analyst/)                 | Build the first level of the OST: 3-8 phases of the JTBD      | shipped        |
 | 3   | [`opportunity-analyst`](skills/opportunity-analyst/)             | Extract opportunities per transcript; tag each to a phase     | shipped        |
 | 4   | [`opportunity-analyst-reset`](skills/opportunity-analyst-reset/) | Strip prior analyst output so the pipeline can re-run cleanly | shipped        |
-| 5   | [`opportunity-mapper`](skills/opportunity-mapper/)               | Cluster opportunities across transcripts into a tree          | planned (v0.2) |
-| 6   | [`opportunity-sizer`](skills/opportunity-sizer/)                 | Score and prioritize opportunities; surface the heaviest leaf | shipped¹       |
+| 5   | [`opportunity-clusterer`](skills/opportunity-clusterer/)         | Cluster opportunities across transcripts; hard-partition by phase; verbatim labels | shipped        |
+| 6   | [`opportunity-sizer`](skills/opportunity-sizer/)                 | Score and prioritize clusters on importance × prevalence; surface the top focus    | shipped        |
+| 7   | [`opportunity-mapper`](skills/opportunity-mapper/)               | Optional: assemble clusters into a multi-level OST tree                            | deferred       |
 
-¹ The current `opportunity-sizer` does both clustering and scoring in a monolithic flow. v0.2 will split clustering into `opportunity-mapper` and reduce the sizer to scoring only.
+The default pipeline is `clusterer → sizer`. `opportunity-mapper` is kept as an optional follow-on for users who want a full tree, but tree-building proved error-prone in practice, so the sizer reads the clusterer's flat output directly.
 
 ## Install
 
@@ -68,6 +70,7 @@ This produces an `icp-screened-TEMP-YYYY-MM-DD/` subfolder. Then run the rest of
 ```
 /phase-map-analyst /path/to/transcripts/icp-screened-TEMP-YYYY-MM-DD
 /opportunity-analyst /path/to/transcripts/icp-screened-TEMP-YYYY-MM-DD
+/opportunity-clusterer /path/to/transcripts/icp-screened-TEMP-YYYY-MM-DD
 /opportunity-sizer /path/to/transcripts/icp-screened-TEMP-YYYY-MM-DD
 ```
 
