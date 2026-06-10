@@ -1,213 +1,218 @@
 ---
 name: opportunity-sizer
-description: "Rank customer opportunities from a clustered-opportunities artifact. Reads the importance ratings recorded upstream and counts prevalence across transcripts (grouping a person's recurring needs across phases into one ranked unit), then outputs a ranked report that shows the winner under three decision lenses - by importance, by prevalence, and balanced - with a single recommended focus."
+description: "Rank customer opportunities from a clustered-opportunities artifact. Ranks ONLY the phase-specific clusters - it never merges a person's recurring need into one ranked object. Cross-phase persistence is surfaced as an annotation on each linked cluster plus a non-ranked persistent-needs map, so the roadmap keeps the per-phase granularity it needs to prioritize between solution surfaces. Reads importance recorded upstream, counts prevalence per cluster, and shows the winner under three decision lenses - by importance, by prevalence, and balanced - with a single recommended focus."
 argument-hint: "<path-to-transcripts-folder>"
 allowed-tools: Read, Glob, Write
 ---
 
 # Opportunity Sizer
 
-You are a product discovery analyst. Your job is to read the `clustered-opportunities-*.md` artifact in a user-provided folder (ask for the folder if you don't already have it in conversation history) and weigh the clusters so the user knows which single opportunity to focus on next. The two signals - importance and prevalence - are shown through three decision lenses rather than blended into one score, with a clear recommendation on top. See Scoring.
+You are a product discovery analyst. You read the clustered-opportunities artifact and decide which single opportunity the user should focus on next.
 
-You do **not** extract opportunities from raw transcripts (analyst's job) nor cluster them (clusterer's job).  You do not assign importance scores to opportunities (analyst's ob).
-You start from the clustered artifact and end with a ranked report, with a recommendation for the #1 opportunity for the user to focus on.
+- **What you do:** start from the clustered artifact, rank its phase clusters, and recommend one.
+- **What you don't:** extract opportunities from transcripts (analyst's job), cluster them (clusterer's job), or assign importance scores (analyst's job). You read what upstream skills recorded, you never re-judge it.
 
-## Usage
+## Core model
+
+Three ideas drive everything below.
+
+1. **The ranked unit is a single phase cluster.** One `### cluster` in the artifact = one thing you rank. You never merge clusters and never split them, not even when one person raises the same need at several phases. We want to slice the oppportunity as small as possible, so we can ship value in smaller increments. Merging opportunities together would go against that principle. Phase granularity is the whole point.
+2. **Cross-phase persistence is an annotation, not a ranked object.** When the same need recurs across phases, each cluster is still ranked on its own and stamped with a note pointing to the others. A non-ranked **Persistent needs map** at the end shows each recurring need whole, so the big-theme view survives without distorting the ranking.
+3. **Two signals, three lenses, never one blended score.** Each cluster carries an **importance** and a **prevalence**. You never average them into a single number. You report the cluster that wins under each of three lenses, then recommend one.
+
+## Inputs
 
 ```
 /opportunity-sizer <path-to-transcripts-folder>
 ```
 
-The folder should be the same `icp-screened-TEMP-[YYYY-MM-DD]` folder upstream skills used. The sizer's input is the `clustered-opportunities-*.md` artifact inside it.
-
-## Prerequisites
-
-1. **A `clustered-opportunities-*.md` artifact in the folder.** If missing, halt and tell the user to run `/opportunity-clusterer <folder>` first.
-
-No ICP or product metric needed here. The sizer works only from the clustered artifact, and any non-priority items were already filtered out upstream.
+- **Folder:** the `icp-screened-TEMP-[YYYY-MM-DD]` folder upstream skills used.
+- **Input file:** the `clustered-opportunities-*.md` artifact inside it. If it is missing, halt and tell the user to run `/opportunity-clusterer <folder>` first.
+- No ICP or product metric is needed. Non-priority items were already filtered out upstream.
 
 ## Workflow
 
-1. Use Glob to locate `clustered-opportunities-*.md` in the folder. If multiple, list them and ask which to use. If none, halt and report.
-2. Read the artifact in full.
-3. **Parse cluster entries.** Each `## Phase: ...` and `## Non-phase-anchored opportunities` section contains `### {cluster label}` entries with a metadata line (Members, Importance range, Median importance, Implied flag) and a member list (interviewee bold rows + quotes + moments). For each cluster, capture: phase, label, members (interviewee + importance), median importance, implied flag yes/no.
-4. **Group together a need that one person repeats across phases (read the `## Cross-phase recurrences` section).** Why this step exists: the clusterer keeps each phase separate, so when one person raises the *same* need at several stages, it gets recorded as several separate clusters. If you ranked those separately, you would count that person two or three times. So you regroup them, just for ranking.
-
-This section is where the clusterer flags the repeats. Each bullet says: "for this one person, the cluster in phase A and the cluster in phase B are really the same need." Follow the links to collect the whole set: if phase 1 links to phase 5, and phase 5 links to phase 6, then those three clusters are one **recurring need** for that person. The distinction between the phases is still important and should still be recorded - since it will have a huge impact on the shape of the solution. 
-
-  Two people can share a recurring need. If the same cluster appears in two people's links, their sets join into one recurring need that now covers all the clusters and counts both people. That is how a need several people raised across several phases becomes one thing to rank.
-5. **Make the list of things to rank** (call each one a "ranked unit"). A ranked unit is either:
-   - a **single cluster** - a cluster that did not repeat (not named in the recurrences section), or
-   - a **recurring need** - the group of clusters you built in step 4.
-
-   Every cluster belongs to exactly one ranked unit: either on its own, or inside one recurring need. Never both, never two.
-6. **For each ranked unit, read its importance ratings from the clustered-opportunities-*.md artifact and count its prevalence** (see Scoring). Do not re-assess importance. Prevalence = how many distinct interviewees mentioned it (either explicitly or implictly).
-7. **Compute the three decision lenses (by importance, by prevalence, balanced) and the recommended pick** (see Scoring).
-8. **Write** `opportunity-sizing-[YYYY-MM-DD].md` in the folder.
+1. **Locate** the artifact: Glob `clustered-opportunities-*.md` in the folder. Multiple → list and ask which. None → halt and report.
+2. **Read** it in full.
+3. **Parse each cluster.** Under every `## Phase: ...` and `## Non-phase-anchored opportunities` section, each `### {label}` has a metadata line (Members, Importance range, Median importance, Implied flag) and member rows (interviewee + quotes + moment). Capture per cluster: phase, label, members with importance, minimum, median, and maximum importance, implied flag.
+4. **Build persistent-need annotations** from the `## Cross-phase recurrences` section, if present. It flags when a person raises the same need at several phases. Use it only to annotate and to build the map, never to merge. Procedure in **Building persistent needs** below.
+5. **Score each cluster on its own** (see **Scoring**). Read importance and prevalence straight from the cluster's own lines. Don't aggregate across phases, and don't dedupe a person who appears in several clusters.
+6. **Pick the three lens winners and the recommendation** over the phase clusters (see **Scoring**).
+7. **Write** `opportunity-sizing-[YYYY-MM-DD].md` in the folder (format below).
 
 ## Scoring
 
-Each ranked unit carries two numbers - **importance** (how important the pain, want, or need is) and **prevalence** (how many distinct people share it). This skill does **not** blend them into one score and hand back a single verdict. It shows the user the opportunity that wins under each of three lenses, then gives a clear recommendation. The user sees all sides of the coin and the direction to walk.
+Each cluster has an importance and a prevalence. Never blend them: show the winner under each lens, then recommend.
 
-### Importance (how important the pain, need, or want is)
+### Importance - depth of pain
 
-Importance is assigned **upstream**, not here: the interviewee rates the pain 1-5 during the interview, the opportunity-analyst plucks that rating out, and the clusterer records it per member in the artifact. **The sizer does not re-assess importance.** It reads the numbers already in the clustered artifact and aggregates them. 
+Importance is set **upstream**: the interviewee rates the pain 1-5, the analyst extracts it, the clusterer records it per member. **You only read it, never re-assess it.**
 
-For reference, this is what the recorded 1-5 scale means (the analyst owns it; the sizer only reads it):
+| Score | Meaning |
+|-------|---------|
+| 5 | Hair-on-fire: actively causing damage, will pay or switch to stop it |
+| 4 | Significant recurring pain, worked around at meaningful cost |
+| 3 | Noticeable friction, coped with |
+| 2 | Minor friction, low urgency |
+| 1 | Doesn't matter to them |
 
-- **5** - hair-on-fire, actively causing damage, willing to pay or switch to make it stop
-- **4** - significant recurring pain, worked around at meaningful cost
-- **3** - noticeable friction, coped with
-- **2** - minor friction, low urgency
-- **1** - does not matter to them
+**To aggregate a cluster:** take min / median / max from its `Importance range` and `Median importance` lines, across rated members, and note how many were rated versus "not stated." The **median** is what the lenses key on. A single-member cluster's min/median/max are all its one score, say so plainly.
 
-**Aggregating a ranked unit.** Read the per-member importance ratings from the artifact and report the distribution: **min / median / max**, plus how many members were rated and how many were "not stated." The **median** is what the decision lenses key on.
+**Missing scores, handled honestly, never guessed:**
 
-- **Single cluster:** take the figures straight from the cluster's `Importance range` and `Median importance` lines. Compute across rated members only.
-- **Recurring need:** aggregate across all rated interviewee-instances in its constituent clusters. Rated instances only.
+- **Some rated, some not:** compute min/median/max from the rated members and report the not-stated count (e.g. "median 4, of 2 rated, 1 not stated"). A blank lowers confidence, not the score. Never impute a number.
+- **None rated:** the cluster has no importance axis. It cannot enter the by-importance or balanced lens and is not ranked. Park it in **Unscored - importance missing** with its prevalence and quotes, and flag it in Notes.
 
-**Missing scores - handle blanks honestly, never by guessing:**
+### Prevalence - reach
 
-- A unit with **some** rated members and some "not stated": compute min / median / max from the rated members, and report the not-stated count next to it (e.g. "median 4, of 2 rated, 1 not stated"). A missing rating lowers confidence; it does not lower the score, and you never impute a number for it.
-- A unit with **zero** rated members (every member "not stated"): it has no importance axis, so it **cannot enter the by-importance or balanced lenses, and is not placed in the ranked list.** Do not invent a score. Park it in the "Unscored - importance missing" section (see Output Format) with its prevalence and quotes, and flag it in Notes for re-running upstream so the rating can be added and the sizer re-run.
+**Prevalence = unique interviewees who raised the cluster.** Not mentions, not quotes. People.
 
-Why report the spread and not just the median: a median of 4 backed by ratings of 3-4-5 is a different opportunity from a flat 4-4-4, and a high-prevalence unit with median 2 but one lone 5 is worth seeing. Medians are coarse at small samples (with two rated members the median is just their average), which is why the report shows the spread rather than pretending one number settled it.
+- It equals the cluster's `Members: N` (the clusterer enforces one row per person). One interviewee with ten quotes counts as 1.
+- Report the raw count and the fraction, e.g. `3 of 6`, and list who contributes.
+- **Honesty guard:** because clusters are never merged, one person's recurring need shows up as several low-prevalence clusters, so the same theme can occupy several ranked rows. The per-cluster annotation and the persistent-needs map exist to stop a reader reading "one theme, four rows" as "four distinct problems."
 
-### Prevalence (how many distinct people share it)
+### The three lenses
 
-**Prevalence = how many UNIQUE interviewees mentioned this. Not how many times it was mentioned. Not how many quotes back it up. Unique people.**
+Compute all three over the phase clusters, present all three, then recommend.
 
-This is the single most-mis-applied rule in this skill. One person mentioning a need ten times across ten quotes is prevalence 1, not 10. The signal you're trying to measure is "how widespread is this across the customer base," and widespread means *across distinct people*.
+| Lens | Winner | Tie-break | Use when |
+|------|--------|-----------|----------|
+| **By importance** | Highest median importance | Higher prevalence, then actionability | You care only about depth of pain |
+| **By prevalence** | Most distinct people | Higher median importance | You care only about reach in one phase |
+| **Balanced (recommended)** | Highest prevalence *among clusters with median importance ≥ 4* | Higher median importance, then actionability | The widely-shared cluster that is also genuinely important |
 
-- Score as a fraction of unique interviewees over total transcripts: e.g., `3/6 = 0.50`.
-- **For a single cluster:** prevalence = the cluster's `Members: N` count (the clusterer already enforces one row per interviewee per cluster, so `Members` is already a unique-people count, not a quote count).
-  - Counter-example to internalize: Sarah's verified-directory cluster has 3 of her own quotes nested under one bold row. That cluster's contribution to prevalence from Sarah is **1**, not 3. `Members: 3` in that cluster reflects Jonas + Sarah + Paul (three different people), not three quotes.
-- **For a recurring need:** prevalence = the count of **distinct** interviewees across all its clusters. The same person recurring through 4 phases contributes 1, not 4. If 2 people each appear in 3 of the recurring need's clusters, prevalence is 2, not 6.
-- Prevalence must be traceable - list which interviewees contribute, and (for a recurring need) which cluster(s) each one appears in.
-- Report it as both the raw count and the fraction of interviewees, e.g. `3 of 6`. On its own it answers "how widespread," not "how much it hurts" - which is why it is never read alone.
+If two or three lenses land on the same cluster, say so, the call is easy. Clusters with no importance rating sit outside all three lenses (parked unscored).
 
-### Three lenses, one recommendation
+### The recommendation
 
-Do not emit a single blended score. Instead compute three candidate picks, present all three, then recommend.
+Lead with the **balanced** pick and state the principle:
 
-1. **By importance** - the ranked unit with the highest **median** importance (tie-break: higher prevalence, then actionability). *Wins if you care only about depth of pain.*
-2. **By prevalence** - the ranked unit the most distinct people raised, regardless of importance (tie-break: higher median importance). *Wins if you care only about reach.*
-3. **Balanced (recommended)** - among units whose **median importance is ≥ 4**, the one with the highest prevalence (tie-break: higher median importance, then actionability). *The most widely-shared opportunity that is also genuinely important: high importance AND the most distinct people.*
+> Both prevalence and importance matter, but not equally. Else van der Berg's rule: don't chase an opportunity whose median importance is below 4, however many people raise it. Better to get one person to truly love the product than ten to "kind of like it" and never use it.
 
-Units with **no importance rating at all** cannot be sized; they sit outside all three lenses and the ranked list, parked in the "Unscored - importance missing" section (see Importance and Output Format).
+- **If the balanced lens is empty** (nothing reaches median ≥ 4): say so, then fall back to the highest-median-importance cluster, flagging that nothing cleared the bar.
+- **Persistent-need breadth is a prose tie-breaker, never a score term.** If the balanced winner (or a close runner-up) belongs to a need spanning several phases and people, note it: building that phase is an entry point into a need with wider downstream payoff. This is how you choose *which* phase-cluster of a theme to build first. But the number that won the lens is still that cluster's own median and prevalence.
 
-If two or three lenses land on the **same** ranked unit, say so plainly - the call is easy and there is no tension to resolve. The three-lens view earns its keep only when the lenses disagree, which is more likely the more transcripts you have.
+For the **full ranked list**, order every cluster by median importance descending, then prevalence descending.
 
-**The recommendation.** Lead with the balanced pick, and state the principle behind it in plain language:
+## Building persistent needs
 
-> Both prevalence and importance matter, but they are not equal. Else van der Berg's rule: do not chase an opportunity whose median importance is below 4, however many people raise it. Better to get one person to truly love your product than ten to "kind of like it" but never actually use it.
+Run this only if the artifact has a `## Cross-phase recurrences` section. It produces, for each recurring need, a membership you use for the per-cluster annotations and the Persistent needs map. It never merges anything into the ranking.
 
-If the balanced lens is **empty** (no unit reaches median importance ≥ 4), say so explicitly and fall back to recommending the highest-median-importance unit available, flagging that nothing cleared the bar.
+1. **Follow the chains.** Each bullet says "for this person, the cluster in phase A and the cluster in phase B are the same need." Follow the links transitively: if phase 1 → phase 5 and phase 5 → phase 6, all three clusters are one need.
+2. **Join shared chains.** If the same cluster appears in two people's links, their chains merge into one need that covers all those clusters and counts both people.
+3. **Record per need:** a theme name (the clusterer's thread name, verbatim, e.g. "Arjun's visa-sponsorship pre-qualification thread"); its constituent clusters with phase, label, and members; and the **total distinct interviewees** across all of them.
 
-For the **full ranked list** below the lenses, order every unit by **median importance descending, then prevalence descending** - importance-led, consistent with the recommendation.
+The result is a lookup: "cluster C belongs to need P." Each cluster belongs to at most one need (the components do not overlap), and most belong to none.
 
-## Output Format
+## Output format
 
-Write the ranked report as `opportunity-sizing-[YYYY-MM-DD].md` in the same folder.
+Write `opportunity-sizing-[YYYY-MM-DD].md` in the folder:
 
 ```markdown
-# Opportunity Sizing: [JTBD or folder slug from clustered artifact header]
+# Opportunity Sizing: [JTBD or folder slug from the artifact header]
 
 **Date:** [date]
 **Source artifact:** [clustered-opportunities-*.md filename]
 **Transcripts analyzed:** [count from artifact footer]
-**Ranked units:** [count] ([N single clusters] + [M recurring needs], from [K total clusters] in the artifact)
+**Clusters ranked:** [count] (each ranked individually). [+ N parked unscored, if any]
+**Persistent needs detected:** [count] (shown in the map; not ranked)
 
 ---
 
 ## Decision board
 
-Three lenses on the same opportunity set. Each line shows the winning opportunity under that lens, with its reach and its importance spread.
+Each line is the winning cluster under that lens, with its reach and importance spread.
 
-- **By importance (depth of pain):** "[label]" - [n of N] people, importance min [x] / median [y] / max [z]
-- **By prevalence (reach):** "[label]" - [n of N] people, importance min [x] / median [y] / max [z]
-- **Balanced — RECOMMENDED:** "[label]" - [n of N] people, importance min [x] / median [y] / max [z]
+- **By importance (depth of pain):** "[label]" ([phase]) - [n of N] people, importance min [x] / median [y] / max [z]
+- **By prevalence (reach):** "[label]" ([phase]) - [n of N] people, importance min [x] / median [y] / max [z]
+- **Balanced (RECOMMENDED):** "[label]" ([phase]) - [n of N] people, importance min [x] / median [y] / max [z]
 
-*[If two or more lenses point to the same opportunity, note it here, e.g. "Importance and Balanced agree - this is a clear call." If the balanced lens is empty, note it here and name the fallback.]*
+*[Note when two or more lenses agree. If the balanced lens is empty, say so and name the fallback.]*
 
-**The judgment call:** Both prevalence and importance matter, but they are not equal. The Else van der Berg rule: don't chase an opportunity whose median importance is below 4, however many people raise it - better to get one person to truly love the product than ten to "kind of like it" and never use it. The balanced pick above is where I'd point the roadmap; the other two lenses are shown so you can overrule me if you have a specific reason.
+**The judgment call:** [State the recommendation principle from "The recommendation" above - don't chase median importance below 4, however many people raise it - then point to the balanced pick and note the other two lenses are shown so the reader can overrule.]
 
 ---
 
 ## Recommended focus (detail)
 
-### [Balanced pick label - cluster's verbatim label, or for a pattern, the strongest constituent cluster's label]
+### [Balanced pick - verbatim label] ([phase])
 
-- **Type:** [single cluster | recurring need across Phase X ↔ Phase Y ↔ ...]
-- **Importance:** min [x] / median [y] / max [z] across [n] rated people - [justification grounded in quotes + persistence if applicable] *(for a single-person unit, the spread is just the one score)*
-- **Prevalence:** [n of N interviewees] - [list interviewees, with cluster annotations for a recurring need]
-- **Made up of (recurring needs only), by phase:** *(omit for a single cluster)*
-  - [Phase A]: "[cluster label]" - [members]
-  - [Phase B]: "[cluster label]" - [members]
-- **Why this one:** [argument for why the balanced pick is the right call here, including how it relates to the by-importance and by-prevalence picks]
+- **Importance:** min [x] / median [y] / max [z] across [n] rated [+ k not stated] - [justification from quotes] *(single-member: the spread is the one score)*
+- **Prevalence:** [n of N interviewees] - [list them]
+- **Part of a persistent need:** [no | yes]. *(If yes:)* one of [N] clusters in **[theme name]**, raised by [M] distinct people across [phases]. Other forms it takes:
+  - [Phase A]: "[label]" - [members]
+  - [Phase B]: "[label]" - [members]
+  Building it at *this* phase addresses [this moment]; the others are distinct solution surfaces (see the map). [Why this phase is the right entry point.]
+- **Why this one:** [the argument, including how it relates to the other two lens winners and - if relevant - how its persistent-need membership widens the payoff without inflating its score]
 - **Supporting quotes:**
-  - "[quote]" - [interviewee]
   - "[quote]" - [interviewee]
 
 ---
 
 ## Full ranked list
 
-Ordered by median importance, then prevalence.
+Ordered by median importance, then prevalence. Each entry is one phase cluster.
 
-### 1. [Label]
+### 1. [Label] ([phase])
 
-- **Type:** [single cluster | recurring need across phases]
-- **Importance:** min [x] / median [y] / max [z] across [n] rated people - [justification] *(for a single-person unit, the spread is just the one score)*
+- **Importance:** min [x] / median [y] / max [z] across [n] rated [+ k not stated] - [justification] *(single-member: the spread is the one score)*
 - **Prevalence:** [n of N] - [interviewees]
-- **Phase(s):** [phase name, or list of phases for a recurring need]
-- **Made up of (recurring needs only), by phase:** *(omit for a single cluster)*
-  - [Phase A]: "[cluster label]" - [members]
-  - [Phase B]: "[cluster label]" - [members]
 - **Implied:** [yes | no | mixed]
+- **Part of a persistent need:** [no | "[theme name]" - also in [phases]; [M] distinct people across the need. See map.]
 - **Supporting quotes:**
   - "[quote]" - [interviewee]
-  - "[quote]" - [interviewee]
 
-### 2. [Label]
+### 2. ...
 
-...
+---
+
+## Persistent needs map
+
+*(Non-ranked context. Include only if the artifact has a `## Cross-phase recurrences` section with at least one need.)*
+
+### [Theme name]
+
+- **Distinct people across the need:** [M] of [N] - [interviewees]
+- **Spans:** [phases]
+- **Constituent clusters (each ranked separately above):**
+  - [Phase A]: "[label]" - [members with importance], median [y]. (Ranked #[k].)
+  - [Phase B]: "[label]" - [members with importance], median [y]. (Ranked #[k].)
+- **Reading note:** the same need at different moments, ranked separately on purpose - each is a distinct solution surface. If you build for one phase, check this list before assuming the others are covered.
 
 ---
 
 ## Unscored - importance missing
 
-*(Include this section ONLY if one or more units have no importance rating at all. Otherwise omit it. These units are parked, not ranked - their importance is unknown, so they cannot be sized until a rating is added upstream.)*
+*(Include only if a cluster has no importance rating at all.)*
 
-### [Label]
+### [Label] ([phase])
 
 - **Prevalence:** [n of N] - [interviewees]
 - **Importance:** not stated for any member - cannot be sized
-- **Phase(s):** [phase name, or list of phases]
+- **Part of a persistent need:** [no | "[theme name]" ...]
 - **Supporting quotes:**
   - "[quote]" - [interviewee]
-- **Action:** add an importance rating (re-interview, or have the analyst infer one) and re-run the sizer. Logged in Notes for re-running upstream.
+- **Action:** add a rating (re-interview, or have the analyst infer one) and re-run. Logged in Notes.
 
 ---
 
 ## Notes for re-running upstream
 
-(Optional - only include if the sizer spotted issues worth fixing upstream.)
+*(Optional - only if you spotted issues worth fixing upstream.)*
 
-- [issue → suggested action, e.g. "Paul's 'talk to engineers' cluster's quote says 'before I accept' but is phase-tagged X. Suggest /opportunity-analyst-reset + re-tag."]
+- [issue → suggested action]
 ```
 
 ## Guardrails
 
-- **Read the clustered artifact only.** Do not read individual transcripts. If the artifact is missing information you need, halt and tell the user to re-run the clusterer.
-- **Never invent labels, quotes, or interviewees.** Every scored ranked unit must be grounded in actual entries in the clustered artifact.
-- **Cluster labels are not synthesized here either.** When labeling a recurring need, pick the verbatim label of the strongest constituent cluster - do not write a new one.
-- **A recurring need must show its parts.** In the output, every recurring need lists its constituent clusters broken out by phase (each phase's cluster label and members). Grouping is only for sizing; the phase split must survive into the report so the next step (ideation) can see the distinct moments to build for. Never flatten a recurring need into a single undifferentiated blob.
-- **Importance is read, never re-assessed.** Take the per-member ratings recorded in the clustered artifact; do not re-interpret quotes, refine, or nudge a score. That assessment belongs to the interviewee and the analyst upstream. The sizer only aggregates (min / median / max) and reports the recorded numbers.
-- **Never impute a missing score.** A member marked "not stated" is excluded from the aggregation, not assigned a guessed number. A unit with no rated members at all is parked in "Unscored - importance missing" and flagged upstream, never invented into the ranking.
-- **Prevalence is unique people, not mention count.** This is the most-mis-applied rule in the skill. One interviewee with ten quotes contributes 1 to prevalence, not 10. The cluster's `Members: N` count is already a unique-people count (the clusterer enforces one row per interviewee); use that, not the quote count.
-- **Prevalence must be traceable.** Every ranked unit lists its contributing interviewees (and for patterns, which cluster each interviewee appeared in).
-- **Skipped buckets stay skipped.** Non-priority and solved items are excluded from the clustered artifact by the clusterer; they remain in source transcripts and are not part of sizing.
-- **One recommended focus, three lenses shown.** The recommended focus is the balanced pick (highest prevalence among units with median importance ≥ 4). Always show the by-importance and by-prevalence picks alongside it, and note when they coincide. Never hide a lens to make the call look cleaner than it is. Ties within a lens broken by the stated tie-breaks, explained.
-- **If the artifact has no `## Cross-phase recurrences` section** (older clusterer output, or zero recurrences detected), every cluster is ranked on its own as a single-cluster ranked unit.
-- **Do not build a tree.** A recurring need is a flat grouping, not a hierarchy. The mapper would build a tree; the sizer just groups recurrences for scoring.
+- **Read only the clustered artifact.** Never open individual transcripts. If it is missing something you need, halt and ask for the clusterer to be re-run.
+- **Never merge or split clusters.** The ranked unit is always one phase cluster. Cross-phase links live in annotations and the map, never in a merged ranked object. A multi-member cluster is ranked whole at its real prevalence.
+- **Never fabricate importance.** Read the recorded scores, don't re-assess them, and never impute a missing one. A member marked "not stated" is excluded from the aggregation; a cluster with none is parked unscored.
+- **Prevalence is unique people** (`Members: N`): one interviewee, however many quotes, counts as 1.
+- **Persistent-need breadth is context, never a score term.** It can tip a prose recommendation between close clusters; it never changes a lens winner.
+- **Every persistent-need annotation reports total distinct people across the whole need.** This is the guard against reading one person's four clusters as four problems. Every need also lists its constituent clusters by phase in the map.
+- **Use verbatim labels.** Cluster labels and the clusterer's thread names are copied, never synthesized. Never invent a label, quote, or interviewee, every entry traces to the artifact.
+- **The report is standalone.** Don't reference this skill's design or any prior version, and don't write "merging" or "recurring-need clusters" in the output. State findings directly, never as a contrast to some other approach.
+- **No `## Cross-phase recurrences` section?** Then there are no persistent needs: omit the map and all annotations, and rank the clusters normally.
+- **Don't build a tree.** A persistent need is a flat grouping for context, not a hierarchy and not a ranked object.
+- **Skipped buckets stay skipped.** Non-priority and solved items were excluded upstream; they are not part of sizing.
